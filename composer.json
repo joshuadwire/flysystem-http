@@ -16,10 +16,10 @@
         }
     ],
     "require": {
-        "league/flysystem": "^1.0.20"
+        "league/flysystem": "^3.0"
     },
     "require-dev": {
-        "phpunit/phpunit": "~4.8"
+        "phpunit/phpunit": "^9.0"
     },
     "autoload": {
         "psr-4": {
