@@ -2,38 +2,43 @@
 
 namespace Twistor\Flysystem\Http;
 
-use League\Flysystem\AdapterInterface;
+use BadMethodCallException;
+use JetBrains\PhpStorm\Pure;
+use League\Flysystem\FileAttributes;
+use League\Flysystem\FilesystemAdapter;
 use League\Flysystem\Config;
-use League\Flysystem\Util\MimeType;
+use League\Flysystem\UnableToReadFile;
+use League\Flysystem\UnableToRetrieveMetadata;
+use League\Flysystem\Visibility;
 
 /**
  * Provides an adapter using PHP native HTTP functions.
  */
-class HttpAdapter implements AdapterInterface
+class HttpAdapter implements FilesystemAdapter
 {
     /**
      * The base URL.
      *
      * @var string
      */
-    protected $base;
+    protected string $base;
 
     /**
      * @var array
      */
-    protected $context;
+    protected array $context;
 
     /**
      * @var bool
      */
-    protected $supportsHead;
+    protected bool $supportsHead;
 
     /**
      * The visibility of this adapter.
      *
      * @var string
      */
-    protected $visibility = AdapterInterface::VISIBILITY_PUBLIC;
+    protected string $visibility = Visibility::PUBLIC;
 
     /**
      * Constructs an HttpAdapter object.
@@ -42,7 +47,7 @@ class HttpAdapter implements AdapterInterface
      * @param bool   $supportsHead Whether the endpoint supports HEAD requests
      * @param array  $context      Context options
      */
-    public function __construct($base, $supportsHead = true, array $context = [])
+    public function __construct(string $base, bool $supportsHead = true, array $context = [])
     {
         $this->base = $base;
         $this->supportsHead = $supportsHead;
@@ -62,68 +67,82 @@ class HttpAdapter implements AdapterInterface
         // @codeCoverageIgnoreEnd
 
         if (isset(parse_url($base)['user'])) {
-            $this->visibility = AdapterInterface::VISIBILITY_PRIVATE;
+            $this->visibility = Visibility::PRIVATE;
         }
     }
 
     /**
      * @inheritdoc
      */
-    public function copy($path, $newpath)
+    public function copy(string $source, string $destination, Config $config):void
     {
-        return false;
+        throw new BadMethodCallException('Not implemented');
     }
 
     /**
      * @inheritdoc
      */
-    public function createDir($path, Config $config)
+    public function move(string $source, string $destination, Config $config):void
     {
-        return false;
+        throw new BadMethodCallException('Not implemented');
     }
 
     /**
      * @inheritdoc
      */
-    public function delete($path)
+    public function createDirectory(string $path, Config $config): void
     {
-        return false;
+        throw new BadMethodCallException('Not implemented');
     }
 
     /**
      * @inheritdoc
      */
-    public function deleteDir($path)
+    public function delete(string $path):void
     {
-        return false;
+        throw new BadMethodCallException('Not implemented');
     }
+
+    /**
+     * @inheritdoc
+     */
+    public function deleteDirectory(string $path): void
+    {
+        throw new BadMethodCallException('Not implemented');
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function directoryExists(string $path): bool
+    {
+        throw new BadMethodCallException('Not implemented');
+    }
+
 
     /**
      * Returns the base path.
      *
      * @return string The base path
      */
-    public function getBase()
+    public function getBase(): string
     {
         return $this->base;
     }
 
-    /**
-     * @inheritdoc
-     */
-    public function getMetadata($path)
+    public function getMetadata($path): FileAttributes
     {
         if (false === $headers = $this->head($path)) {
-            return false;
+            throw UnableToRetrieveMetadata::create($path, 'Could not fetch metadata');
         }
 
-        return ['type' => 'file'] + $this->parseMetadata($path, $headers);
+        return $this->parseMetadata($path, $headers);
     }
 
     /**
      * @inheritdoc
      */
-    public function getMimetype($path)
+    public function mimeType($path): FileAttributes
     {
         return $this->getMetadata($path);
     }
@@ -131,7 +150,7 @@ class HttpAdapter implements AdapterInterface
     /**
      * @inheritdoc
      */
-    public function getSize($path)
+    public function fileSize($path): FileAttributes
     {
         return $this->getMetadata($path);
     }
@@ -139,7 +158,7 @@ class HttpAdapter implements AdapterInterface
     /**
      * @inheritdoc
      */
-    public function getTimestamp($path)
+    public function lastModified($path): FileAttributes
     {
         return $this->getMetadata($path);
     }
@@ -147,18 +166,15 @@ class HttpAdapter implements AdapterInterface
     /**
      * @inheritdoc
      */
-    public function getVisibility($path)
+    #[Pure] public function visibility($path): FileAttributes
     {
-        return [
-            'path' => $path,
-            'visibility' => $this->visibility,
-        ];
+        return new FileAttributes($path, null, $this->visibility);
     }
 
     /**
      * @inheritdoc
      */
-    public function has($path)
+    public function fileExists($path): bool
     {
         return (bool) $this->head($path);
     }
@@ -166,15 +182,15 @@ class HttpAdapter implements AdapterInterface
     /**
      * @inheritdoc
      */
-    public function listContents($directory = '', $recursive = false)
+    public function listContents(string $path = '', bool $deep = false):iterable
     {
-        return [];
+        throw new BadMethodCallException('Not implemented');
     }
 
     /**
      * @inheritdoc
      */
-    public function read($path)
+    public function read(string $path):string
     {
         $context = stream_context_create($this->context);
         $contents = file_get_contents($this->buildUrl($path), false, $context);
@@ -183,7 +199,7 @@ class HttpAdapter implements AdapterInterface
             return false;
         }
 
-        return compact('path', 'contents');
+        return $contents;
     }
 
     /**
@@ -195,21 +211,10 @@ class HttpAdapter implements AdapterInterface
         $stream = fopen($this->buildUrl($path), 'rb', false, $context);
 
         if ($stream === false) {
-            return false;
+            throw new UnableToReadFile(error_get_last()['message']);
         }
 
-        return [
-            'path' => $path,
-            'stream' => $stream,
-        ];
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function rename($path, $newpath)
-    {
-        return false;
+        return $stream;
     }
 
     /**
@@ -225,41 +230,25 @@ class HttpAdapter implements AdapterInterface
     /**
      * @inheritdoc
      */
-    public function setVisibility($path, $visibility)
+    public function setVisibility($path, $visibility): void
     {
-        throw new \LogicException('HttpAdapter does not support visibility. Path: ' . $path . ', visibility: ' . $visibility);
+        throw new BadMethodCallException('HttpAdapter does not support visibility. Path: ' . $path . ', visibility: ' . $visibility);
     }
 
     /**
      * @inheritdoc
      */
-    public function update($path, $contents, Config $conf)
+    public function write($path, $contents, Config $config):void
     {
-        return false;
+        throw new BadMethodCallException('Not implemented');
     }
 
     /**
      * @inheritdoc
      */
-    public function updateStream($path, $resource, Config $config)
+    public function writeStream($path, $contents, Config $config):void
     {
-        return false;
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function write($path, $contents, Config $config)
-    {
-        return false;
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function writeStream($path, $resource, Config $config)
-    {
-        return false;
+        throw new BadMethodCallException('Not implemented');
     }
 
     /**
@@ -269,7 +258,7 @@ class HttpAdapter implements AdapterInterface
      *
      * @return string
      */
-    protected function buildUrl($path)
+    protected function buildUrl(string $path): string
     {
         $path = str_replace('%2F', '/', $path);
         $path = str_replace(' ', '%20', $path);
@@ -284,7 +273,7 @@ class HttpAdapter implements AdapterInterface
      *
      * @return array|false
      */
-    protected function head($path)
+    protected function head(string $path): bool|array
     {
         $defaults = stream_context_get_options(stream_context_get_default());
         $options = $this->context;
@@ -299,7 +288,7 @@ class HttpAdapter implements AdapterInterface
 
         stream_context_set_default($defaults);
 
-        if ($headers === false || strpos($headers[0], ' 200') === false) {
+        if ($headers === false || !str_contains($headers[0], ' 200')) {
             return false;
         }
 
@@ -311,15 +300,15 @@ class HttpAdapter implements AdapterInterface
      *
      * @param array $headers
      *
-     * @return int|false
+     * @return ?int
      */
-    protected function parseTimestamp(array $headers)
+    protected function parseTimestamp(array $headers): int|null
     {
         if (isset($headers['last-modified'])) {
             return strtotime($headers['last-modified']);
         }
 
-        return false;
+        return null;
     }
 
     /**
@@ -328,25 +317,19 @@ class HttpAdapter implements AdapterInterface
      * @param string $path
      * @param array  $headers
      *
-     * @return array
+     * @return FileAttributes
      */
-    protected function parseMetadata($path, array $headers)
+    #[Pure] protected function parseMetadata(string $path, array $headers): FileAttributes
     {
-        $metadata = [
-            'path' => $path,
-            'visibility' => $this->visibility,
-            'mimetype' => $this->parseMimeType($path, $headers),
-        ];
+         $mimeType = $this->parseMimeType($path, $headers);
 
-        if (false !== $timestamp = $this->parseTimestamp($headers)) {
-            $metadata['timestamp'] = $timestamp;
-        }
+        $timestamp = $this->parseTimestamp($headers);
 
         if (isset($headers['content-length']) && is_numeric($headers['content-length'])) {
-            $metadata['size'] = (int) $headers['content-length'];
+           $size = (int) $headers['content-length'];
         }
 
-        return $metadata;
+        return new FileAttributes($path, $size??null, $this->visibility, $timestamp??null, $mimeType??null);
     }
 
     /**
@@ -355,9 +338,9 @@ class HttpAdapter implements AdapterInterface
      * @param string $path
      * @param array  $headers
      *
-     * @return string
+     * @return ?string
      */
-    protected function parseMimeType($path, array $headers)
+    protected function parseMimeType(string $path, array $headers): ?string
     {
         if (isset($headers['content-type'])) {
             list($mimetype) = explode(';', $headers['content-type'], 2);
@@ -365,10 +348,6 @@ class HttpAdapter implements AdapterInterface
             return trim($mimetype);
         }
 
-        // Remove any query strings or fragments.
-        list($path) = explode('#', $path, 2);
-        list($path) = explode('?', $path, 2);
-
-        return MimeType::detectByFilename($path);
+        return null;
     }
 }
