@@ -116,7 +116,7 @@ class HttpAdapter implements FilesystemAdapter
      */
     public function directoryExists(string $path): bool
     {
-        throw new BadMethodCallException('Not implemented');
+        return (bool) $this->head(rtrim($path,'/\\') . '/');
     }
 
 
